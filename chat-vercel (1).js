@@ -2,7 +2,8 @@
 // Chatbot avec compteur de questions gratuites - Version Vercel
 
 const FREE_LIMIT = 2;
-const users = {}; // Stockage en mémoire simple
+const users = {}; // ⚠️ Stockage en mémoire : sera réinitialisé au redéploiement
+                   // et peut être incohérent entre les instances serverless.
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -14,6 +15,12 @@ export default async function handler(req, res) {
 
     if (!email || !message) {
       return res.status(400).json({ error: 'Email et message requis' });
+    }
+
+    // Validation basique du format email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ error: 'Email invalide' });
     }
 
     const userKey = email.toLowerCase().trim();
@@ -34,9 +41,9 @@ export default async function handler(req, res) {
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
-      return res.status(200).json({ 
-        reply: "[DEBUG] Erreur: Clé API non configurée sur le serveur (ANTHROPIC_API_KEY manquante)",
-        error: true 
+      return res.status(200).json({
+        reply: "[DEBUG] Erreur: ANTHROPIC_API_KEY manquante sur le serveur",
+        error: true
       });
     }
 
@@ -48,9 +55,9 @@ export default async function handler(req, res) {
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-5',
+        model: 'claude-sonnet-4-5-20250929',
         max_tokens: 1000,
-        system: system,
+        system: system || "Tu es un assistant utile.",
         messages: [{ role: 'user', content: message }]
       })
     });
@@ -58,9 +65,9 @@ export default async function handler(req, res) {
     if (!response.ok) {
       const errorBody = await response.text();
       console.error('Claude API error:', response.status, errorBody);
-      return res.status(200).json({ 
+      return res.status(200).json({
         reply: `[DEBUG] Erreur API Claude: ${response.status} - ${errorBody}`,
-        error: true 
+        error: true
       });
     }
 
@@ -74,7 +81,7 @@ export default async function handler(req, res) {
     const remaining = Math.max(0, FREE_LIMIT - users[userKey].questionsUsed);
 
     return res.status(200).json({
-      reply: reply,
+      reply,
       questionsUsed: users[userKey].questionsUsed,
       questionsRemaining: users[userKey].plan === 'free' ? remaining : null,
       plan: users[userKey].plan,
@@ -83,9 +90,9 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('Erreur chat:', error);
-    return res.status(200).json({ 
+    return res.status(200).json({
       reply: `[DEBUG] Erreur serveur: ${error.message}`,
-      error: true 
+      error: true
     });
   }
 }
